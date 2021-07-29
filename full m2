@@ -1,0 +1,197 @@
+Dim swApp As SldWorks.SldWorks
+Dim swModel As ModelDoc2
+Public titles() As String
+Public titlesCount As Integer
+
+Sub main()
+
+    Dim swAssembly As AssemblyDoc
+    Set swApp = Application.SldWorks
+    If swApp Is Nothing Then Exit Sub
+    
+    Set swModel = swApp.ActiveDoc
+    If swModel Is Nothing Then Exit Sub
+    
+    If swModel.GetType <> swDocASSEMBLY And swModel.GetType <> swDocPART Then
+        MsgBox "Необходимо открыть сборку или деталь!"
+        Exit Sub
+    End If
+    
+    designation swModel
+    MsgBox "Готово!"
+    
+End Sub
+
+Function designation(swModel As ModelDoc2)
+
+    If swModel Is Nothing Then Exit Function
+    
+    Dim componentName As String
+    Dim componentDesignation As String
+    Dim swComponents As Variant
+    Dim swComponent As Component2
+    Dim swAssembly As AssemblyDoc
+    Dim iComp As Integer
+    Dim i As Integer
+    Dim exist As Boolean
+    
+    titlesCount = 0
+    exist = False
+    currentTitle = swModel.GetTitle
+    
+    If swModel.GetType = swDocASSEMBLY Then
+        Set swAssembly = swModel
+        swComponents = swAssembly.GetComponents(False)
+        ReDim titles(UBound(swComponents))
+        
+        updateProperties swModel
+        
+        For iComp = 0 To UBound(swComponents)
+        
+            Set swComponent = (swComponents(iComp))
+            updateProperties swComponent.GetModelDoc2
+
+        Next iComp
+        
+    ElseIf swModel.GetType = swDocPART Then
+    
+        ReDim titles(1)
+        updateProperties swModel
+        
+    End If
+
+End Function
+
+
+Function updateProperties(ByRef swModel As ModelDoc2)
+
+    Dim title As String
+    Dim designStr As String
+    Dim nameStr As String
+    Dim configNames As Variant
+    
+    
+    If swModel Is Nothing Then Exit Function
+    title = swModel.GetTitle
+    
+    'Проверка на совпадения имен с уже обработанными компонентами
+    For i = 0 To UBound(titles)
+        If titles(i) = title Then
+            exist = True
+            Exit For
+        End If
+    Next i
+    'Если компонент обработан то выходим из функции
+    If exist Then Exit Function
+    
+    designStr = findDesign(title)
+    If designStr = "" Then
+        nameStr = title
+    Else
+        nameStr = Trim(Replace(title, designStr, ""))
+    End If
+    If Right(nameStr, 6) = "SLDPRT" Or Right(nameStr, 6) = "SLDASM" Then
+            nameStr = Left(nameStr, Len(nameStr) - 7)
+    
+    End If
+    
+     If Left(nameStr, 1) = "_" Or Left(nameStr, 1) = "-" Or Left(nameStr, 1) = "," Or Left(nameStr, 1) = "." Then
+    'оригинальный код
+    'If Left(nameStr, 1) = "_" Or Left(nameStr, 1) = "," Or Left(nameStr, 1) = "." Then
+        nameStr = Right(nameStr, Len(nameStr) - 1)
+    End If
+    
+   ' Оригинальный код:
+   '     End If
+   ' If Left(nameStr, 1) = "_" Or Left(nameStr, 1) = "-" Or Left(nameStr, 1) = "," Or Left(nameStr, 1) = "." Then
+   '     nameStr = Right(nameStr, Len(nameStr) - 1)
+   ' End If
+   
+    'Снять коммент если надо вписать значения в случае их отстутсвия
+    'If designStr = "" Then designStr = "Без обозначения"
+    'If nameStr = "" Then nameStr = "Без наименования"
+    
+    configNames = swModel.GetConfigurationNames
+    If UBound(configNames) > 0 Then
+    
+        Dim designWithConfig As String
+
+        For i = 0 To UBound(configNames)
+            
+            If Not configNames(i) = "По умолчанию" Then
+                designWithConfig = designStr + "_" + configNames(i)
+            Else
+                designWithConfig = designStr
+            End If
+            
+            If Not swModel.AddCustomInfo3(configNames(i), "Обозначение", swCustomInfoText, designWithConfig) Then
+                swModel.CustomInfo2(configNames(i), "Обозначение") = designWithConfig
+            End If
+            
+            If Not swModel.AddCustomInfo3(configNames(i), "Наименование", swCustomInfoText, nameStr) Then
+                swModel.CustomInfo2(configNames(i), "Наименование") = nameStr
+            End If
+                
+            
+            
+        Next i
+        
+    Else
+    
+        If Not swModel.AddCustomInfo3(configNames(0), "Обозначение", swCustomInfoText, designStr) Then
+            swModel.CustomInfo2(configNames(0), "Обозначение") = designStr
+        End If
+        
+        If Not swModel.AddCustomInfo3(configNames(0), "Наименование", swCustomInfoText, nameStr) Then
+            swModel.CustomInfo2(configNames(0), "Наименование") = nameStr
+        End If
+        
+    End If
+    
+    
+    titles(titlesCount) = title
+    titlesCount = titlesCount + 1
+    
+End Function
+
+Function findDesign(ByVal title As String) As String
+
+    Dim regEx As New regExp
+    Dim designs As Object
+    Dim design As Object
+    Dim designStr As String
+    
+    With regEx
+            .Global = True
+            .Multiline = False
+            .IgnoreCase = False
+            .Pattern = "\d{3,}[.]\d{2,}[.]\d{2,}([.]\d{2,})?"
+    End With
+    
+    Set designs = regEx.Execute(title)
+    If designs.Count > 0 Then
+        Set design = designs.Item(0)
+        designStr = design.Value
+        findDesign = designStr
+    Else
+        findDesign = ""
+    End If
+    
+End Function
+
+Function getConfigStr(ByVal num As Integer) As String
+    Dim result As String
+    
+    result = CStr(num + 1)
+    If Len(result) < 2 Then result = "0" + result
+    getConfigStr = result
+    
+End Function
+
+'Member Description
+'swDocASSEMBLY 2
+'swDocDRAWING 3
+'swDocLAYOUT 5
+'swDocNONE 0
+'swDocPART 1
+'swDocSDM 4
